@@ -1,0 +1,62 @@
+<array title="CHECKLIST PROGRESS" width="320" height="580" posx="10" posy="0">
+    
+    <array posx="0" posy="30" width="320" height="400" element_height="45" element_width="310" rows="8" cols="1">
+      
+      <chip id="CHECKLIST.step1" name="1. PHYSICAL CHECKS" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step2" name="2. TELEMETRY VALIDATION" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step3" name="3. ATTITUDE (ACCEL/MAG)" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step4" name="4. AIRSPEED CALIBRATION" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step5" name="5. FLIGHT SURFACES" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step6" name="6. ENGINE &amp; POWERTRAIN" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step7" name="7. RADIO &amp; COMMS" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+
+      <chip id="CHECKLIST.step8" name="8. FINAL COMMIT" face_outline="true">
+        <settings style="name" resolution="0" text_size="14" value="0" face_color="FILL_CANVAS" name_color="INK_PLAIN" face_outline_color="STROKE_FRAME"/>
+        <zone name="PENDING" start="0" end="0" color="STATE_INACTIVE" tcolor="INK_MUTED"/>
+        <zone name="ACTIVE"  start="1" end="1" color="STATE_CAUTION" tcolor="INK_INVERSE"/>
+        <zone name="DONE"    start="2" end="2" color="STATE_OK" tcolor="INK_ON_STATE"/>
+      </chip>
+    </array>
+
+</array>
