@@ -1,0 +1,28 @@
+{
+  "organization": {
+    "name": "STONEFLY",
+    "logo": "🪰"
+  },
+  "platform": {
+    "id": "Project Icarus",
+    "icon": "✈️"
+  },
+  "typography": {
+    "min_font_size": 14,
+    "safe_lines_per_screen": 12
+  },
+  "themes": {
+    "day": {
+      "bg": "\033[47m", "fg": "\033[30m",
+      "colors": {
+        "GREEN": "\033[32m", "AMBER": "\033[33m", "RED": "\033[31m", "BLOCKED": "\033[90m"
+      }
+    },
+    "night": {
+      "bg": "\033[40m", "fg": "\033[37m",
+      "colors": {
+        "GREEN": "\033[92m", "AMBER": "\033[93m", "RED": "\033[91m", "BLOCKED": "\033[31m"
+      }
+    }
+  }
+}

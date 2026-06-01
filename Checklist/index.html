@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STONEFLY | Project Icarus</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { background-color: #0a0a0a; color: #f0f0f0; font-family: 'Courier New', Courier, monospace; padding: 20px; }
+        h2 { border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .node { margin-left: 20px; margin-top: 5px; cursor: default; }
+        .leaf { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+        .leaf:hover { background-color: #222; }
+        
+        .status-UNINITIALIZED { color: #888888; }
+        .status-ACTIVE { color: #5dade2; }
+        .status-GREEN { color: #58d68d; }
+        .status-GREEN_OVR { color: #48c9b0; }
+        .status-AMBER { color: #f4d03f; }
+        .status-BLOCKED { color: #e74c3c; }
+        .status-STAGED { color: #af7ac5; }
+        
+        #app-container { display: none; } 
+        #dashboard { padding: 10px; border: 1px solid #333; background: #111; max-width: 800px; }
+        
+        #auth-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
+        #reader { width: 400px; border: 1px solid #333; background: #111; }
+        #auth-status { margin-top: 15px; color: #f4d03f; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-overlay">
+        <h2>🪰 STONEFLY | OPTICAL AUTH REQUIRED</h2>
+        <p>Present Operator Badge to Camera</p>
+        <div id="reader"></div>
+        <div id="auth-status">Awaiting Scan...</div>
+    </div>
+
+    <div id="app-container">
+        <h2>🪰 STONEFLY OPS | SESSION: <span id="session-id">LOADING...</span></h2>
+        <p>Logged in as: <span id="current-user" style="color: #58d68d;"></span></p>
+        <div id="dashboard">Loading DAG State...</div>
+    </div>
+
+    <script>
+        let actorId = null;
+        let actorRole = null;
+        let html5QrcodeScanner = null;
+
+        async function onScanSuccess(decodedText, decodedResult) {
+            html5QrcodeScanner.clear();
+            document.getElementById('auth-status').innerText = "Validating Cryptographic Signature...";
+            document.getElementById('auth-status').style.color = "#5dade2";
+
+            try {
+                const credentialPackage = JSON.parse(decodedText);
+                const response = await fetch('/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(credentialPackage)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    actorId = data.crew_id;
+                    actorRole = data.role;
+                    
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    document.getElementById('app-container').style.display = 'block';
+                    document.getElementById('current-user').innerText = `${actorId} [${actorRole}]`;
+                    
+                    fetchState();
+                    setInterval(fetchState, 2000);
+                } else {
+                    throw new Error("Signature Rejected by Root Authority");
+                }
+            } catch (err) {
+                document.getElementById('auth-status').innerText = `ACCESS DENIED: ${err.message}`;
+                document.getElementById('auth-status').style.color = "#e74c3c";
+                setTimeout(() => html5QrcodeScanner.render(onScanSuccess, onScanFailure), 3000);
+            }
+        }
+
+        function onScanFailure(error) {}
+
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+        async function fetchState() {
+            if (!actorId) return; 
+            try {
+                const response = await fetch('/state');
+                
+                // --- NEW: Proactive Error Catching ---
+                if (!response.ok) {
+                    const errData = await response.json();
+                    document.getElementById('dashboard').innerHTML = `<strong>API CRASHED:</strong> ${errData.detail}`;
+                    document.getElementById('dashboard').style.color = "#e74c3c";
+                    return;
+                }
+                
+                const data = await response.json();
+                document.getElementById('session-id').innerText = data.session;
+                renderTree(data.dag, document.getElementById('dashboard'));
+            } catch (err) {
+                document.getElementById('dashboard').innerText = `NETWORK ERROR: ${err.message}`;
+            }
+        }
+
+        async function submitTick(nodeId) {
+            if (!actorId) return;
+            try {
+                const response = await fetch('/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "TICK", target: nodeId, actor: actorId, actor_role: actorRole })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    const statusDiv = document.getElementById('auth-status');
+                    // Repurpose the auth-status div at the bottom for interaction errors
+                    statusDiv.innerText = `[!] ${errData.detail}`;
+                    statusDiv.style.color = "#e74c3c"; 
+                    document.getElementById('app-container').appendChild(statusDiv);
+                    setTimeout(() => { statusDiv.innerText = ""; }, 3000);
+                    return;
+                }
+                fetchState();
+            } catch (err) {
+                console.error("Action Failed", err);
+            }
+        }
+
+        function renderTree(node, container, isRoot = true) {
+            if (isRoot) container.innerHTML = ''; 
+
+            const div = document.createElement('div');
+            div.className = `node status-${node.status}`;
+            
+            const icons = {
+                "GREEN": "[✓]", "ACTIVE": "[-]", "BLOCKED": "[X]", 
+                "STAGED": "[?]", "UNINITIALIZED": "[ ]", "AMBER": "[!]"
+            };
+            const icon = icons[node.status] || "[ ]";
+            
+            let labelText = `${icon} ${node.name}`;
+            if (node.last_actor && (node.status === 'GREEN' || node.status === 'VERIFIED' || node.status === 'GREEN_OVR')) {
+                labelText += ` (Auth: ${node.last_actor})`;
+            }
+            div.innerText = labelText;
+
+            if (node.node_type === "leaf") {
+                div.classList.add("leaf");
+                div.onclick = (e) => {
+                    e.stopPropagation();
+                    submitTick(node.node_id);
+                };
+            }
+
+            container.appendChild(div);
+
+            if (node.children) {
+                node.children.forEach(child => renderTree(child, div, false));
+            }
+        }
+    </script>
+</body>
+</html>
