@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STONEFLY System Architecture</title>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #f0f0f0;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2 { border-bottom: 1px solid #333; padding-bottom: 10px; width: 100%; max-width: 1000px; text-align: left; }
+
+        #diagram-container {
+            width: 100%; max-width: 1000px; height: 700px; 
+            background-color: #111; border: 1px solid #333; 
+            position: relative; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        /* SVG Elements Styling */
+        .node rect { fill: #1a1a1a; stroke: #5dade2; stroke-width: 2px; transition: all 0.2s ease; cursor: pointer; }
+        .node text { fill: #f0f0f0; font-size: 14px; font-weight: bold; pointer-events: none; text-anchor: middle; font-family: 'Courier New', Courier, monospace; }
+        .node:hover rect { stroke: #58d68d; }
+
+        .link { fill: none; stroke: #555; stroke-width: 2.5px; transition: stroke 0.2s ease, stroke-width 0.2s ease; }
+        
+        .layer-box { fill: transparent; stroke: #333; stroke-dasharray: 5,5; stroke-width: 1.5px; }
+        .layer-label { fill: #777; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+
+        /* Interactive States */
+        .dimmed { opacity: 0.15; }
+        .highlighted-node rect { stroke: #58d68d; fill: #222; }
+        .highlighted-link { stroke: #58d68d; stroke-width: 4px; }
+
+        /* Tooltip Styling */
+        #tooltip {
+            position: absolute; opacity: 0; background-color: rgba(20, 20, 20, 0.95);
+            color: #58d68d; border: 1px solid #5dade2; padding: 15px; border-radius: 4px;
+            pointer-events: none; font-size: 13px; max-width: 300px; z-index: 10;
+            transition: opacity 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🪰 STONEFLY ARCHITECTURE | Interactive Framework</h2>
+    
+    <div id="diagram-container"></div>
+
+    <script>
+        // --- 1. DATA ARCHITECTURE ---
+        const layers = [
+            { id: "layer_pki", name: "Air-Gapped PKI Trust Layer", y: 80 },
+            { id: "layer_ui", name: "PWA Frontend Layer", y: 220 },
+            { id: "layer_core", name: "Decentralized Core Engine", y: 400 },
+            { id: "layer_net", name: "Local Mesh Network", y: 600 }
+        ];
+
+        const nodes = [
+            { id: "root", label: "Root Authority", x: 300, y: 80, desc: "Generates Master Ed25519 Keypair. Highly secure, offline generation." },
+            { id: "qr", label: "QR Badge Gen", x: 700, y: 80, desc: "Signs operator roles with Root Key and encodes payload into physical QR PNGs." },
+            { id: "scan", label: "Optical Scanner", x: 700, y: 220, desc: "HTML5 Webcam integration to read dense JSON credential packages from physical badges." },
+            { id: "dash", label: "DAG Dashboard", x: 300, y: 220, desc: "Progressive Web App rendering the active operational state matrix." },
+            { id: "api", label: "FastAPI Gateway", x: 500, y: 350, desc: "The RBAC Gatekeeper. Mathematically verifies QR signatures against Root Key before allowing ledger writes." },
+            { id: "eval", label: "DAG Evaluator", x: 200, y: 480, desc: "Calculates live operational state (GREEN/RED) based on causal ledger history and TTL decay." },
+            { id: "db", label: "SQLite WAL Ledger", x: 500, y: 480, desc: "Immutable event store. Appends cryptographically sorted events with Lamport timestamps." },
+            { id: "gossip", label: "Vector Gossip Daemon", x: 800, y: 480, desc: "Background sync thread. Exchanges Vector Clocks to find missing events and merges via INSERT OR IGNORE." },
+            { id: "mdns", label: "mDNS Discovery", x: 800, y: 600, desc: "Zero-config local subnet broadcasting to dynamically find peer IP addresses without a central broker." }
+        ];
+
+        const links = [
+            { source: "root", target: "qr" }, { source: "qr", target: "scan" },
+            { source: "scan", target: "api" }, { source: "dash", target: "api" },
+            { source: "api", target: "dash" }, { source: "api", target: "db" },
+            { source: "db", target: "eval" }, { source: "api", target: "eval" },
+            { source: "db", target: "gossip" }, { source: "gossip", target: "mdns" }
+        ];
+
+        const getById = id => nodes.find(n => n.id === id);
+
+        // --- 2. BUILD THE RAW SVG ---
+        let svgHtml = `
+            <svg width="100%px" height="100%" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrowhead" viewBox="-0 -5 10 10" refX="10" refY="0" orient="auto" markerWidth="8" markerHeight="8">
+                    <path d="M 0,-5 L 10 ,0 L 0,5" fill="#999" />
+                </marker>
+                <marker id="arrowhead-hl" viewBox="-0 -5 10 10" refX="10" refY="0" orient="auto" markerWidth="8" markerHeight="8">
+                    <path d="M 0,-5 L 10 ,0 L 0,5" fill="#58d68d" />
+                </marker>
+            </defs>
+        `;
+
+        // Render Layers
+        layers.forEach(layer => {
+            const h = layer.id === 'layer_core' ? 200 : 100;
+            svgHtml += `
+                <rect class="layer-box" x="50" y="${layer.y - 40}" width="900" height="${h}" rx="10" />
+                <text class="layer-label" x="60" y="${layer.y - 20}">${layer.name}</text>
+            `;
+        });
+
+        // Render Links
+        links.forEach(l => {
+            const s = getById(l.source); const t = getById(l.target);
+            const startX = s.x; const endX = t.x;
+            const startY = s.y + (t.y > s.y ? 25 : -25);
+            const endY = t.y + (t.y > s.y ? -35 : 35);
+            const path = `M ${startX} ${startY} C ${startX} ${(startY+endY)/2}, ${endX} ${(startY+endY)/2}, ${endX} ${endY}`;
+            
+            svgHtml += `<path class="link" id="link_${l.source}_${l.target}" data-source="${l.source}" data-target="${l.target}" d="${path}" marker-end="url(#arrowhead)" />`;
+        });
+
+        // Render Nodes
+        nodes.forEach(n => {
+            svgHtml += `
+                <g class="node" id="node_${n.id}" data-id="${n.id}" transform="translate(${n.x - 90}, ${n.y - 25})">
+                    <rect width="180" height="50" rx="5" />
+                    <text x="90" y="30">${n.label}</text>
+                </g>
+            `;
+        });
+
+        svgHtml += `</svg><div id="tooltip"></div>`;
+        document.getElementById("diagram-container").innerHTML = svgHtml;
+
+        // --- 3. VANILLA JS INTERACTIVITY ---
+        const tooltip = document.getElementById("tooltip");
+        const allNodes = document.querySelectorAll(".node");
+        const allLinks = document.querySelectorAll(".link");
+        const containerRect = document.getElementById("diagram-container");
+
+        allNodes.forEach(nodeEl => {
+            nodeEl.addEventListener("mouseover", (e) => {
+                const id = nodeEl.getAttribute("data-id");
+                const nodeData = getById(id);
+
+                // Dim everything
+                allNodes.forEach(n => n.classList.add("dimmed"));
+                allLinks.forEach(l => l.classList.add("dimmed"));
+
+                // Highlight target node
+                nodeEl.classList.remove("dimmed");
+                nodeEl.classList.add("highlighted-node");
+
+                // Highlight connected paths
+                allLinks.forEach(linkEl => {
+                    const src = linkEl.getAttribute("data-source");
+                    const tgt = linkEl.getAttribute("data-target");
+                    if (src === id || tgt === id) {
+                        linkEl.classList.remove("dimmed");
+                        linkEl.classList.add("highlighted-link");
+                        linkEl.setAttribute("marker-end", "url(#arrowhead-hl)");
+                        document.getElementById(`node_${src}`).classList.remove("dimmed");
+                        document.getElementById(`node_${tgt}`).classList.remove("dimmed");
+                    }
+                });
+
+                tooltip.style.opacity = 1;
+                tooltip.innerHTML = `<strong>${nodeData.label}</strong><br><br>${nodeData.desc}`;
+            });
+
+            nodeEl.addEventListener("mousemove", (e) => {
+                const rect = containerRect.getBoundingClientRect();
+                tooltip.style.left = (e.clientX - rect.left + 15) + "px";
+                tooltip.style.top = (e.clientY - rect.top - 15) + "px";
+            });
+
+            nodeEl.addEventListener("mouseout", () => {
+                allNodes.forEach(n => { n.classList.remove("dimmed", "highlighted-node"); });
+                allLinks.forEach(l => { 
+                    l.classList.remove("dimmed", "highlighted-link"); 
+                    l.setAttribute("marker-end", "url(#arrowhead)");
+                });
+                tooltip.style.opacity = 0;
+            });
+        });
+    </script>
+</body>
+</html>
