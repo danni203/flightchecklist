@@ -29,7 +29,18 @@
     </style>
 </head>
 <body>
-
+   <div id="app-container">
+        <h2>🪰 STONEFLY OPS | SESSION: <span id="session-id">LOADING...</span></h2>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin-bottom: 10px;">
+            <p style="margin: 0;">Logged in as: <span id="current-user" style="color: #58d68d;"></span></p>
+            <button id="ghost-btn" onclick="toggleGhostCrew()" style="background: #2c3e50; color: #fff; border: 1px solid #5dade2; padding: 5px 15px; cursor: pointer; font-weight: bold;">
+                👻 GHOST CREW: OFF
+            </button>
+        </div>
+        
+        <div id="dashboard">Loading DAG State...</div>
+    </div>
     <div id="auth-overlay">
         <h2>🪰 STONEFLY | OPTICAL AUTH REQUIRED</h2>
         <p>Present Operator Badge to Camera</p>
@@ -130,6 +141,25 @@
                 fetchState();
             } catch (err) {
                 console.error("Action Failed", err);
+            }
+        }
+        
+        // host Crew Toggle Logic ---
+        async function toggleGhostCrew() {
+            try {
+                const response = await fetch('/toggle_ghost', { method: 'POST' });
+                const data = await response.json();
+                const btn = document.getElementById('ghost-btn');
+                
+                if (data.active) {
+                    btn.innerText = "👻 GHOST CREW: ON (AUTO-PILOT)";
+                    btn.style.background = "#e67e22"; // Turn orange when active
+                } else {
+                    btn.innerText = "👻 GHOST CREW: OFF";
+                    btn.style.background = "#2c3e50";
+                }
+            } catch (err) {
+                console.error("Failed to toggle Ghost Crew", err);
             }
         }
 

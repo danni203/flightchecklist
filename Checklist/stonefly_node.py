@@ -39,26 +39,83 @@ class PeerDiscoveryListener(ServiceListener):
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None: pass
     def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None: pass
 # --- 1. CONFIGURATION & ROLES ---
-ROLES = {"tech_1": "OPERATOR", "tech_2": "OPERATOR", "hardware_1": "SYSTEM", "javaan": "COMMANDER"}
+# --- 1. CONFIGURATION & ROLES ---
+# Map the PKI Badges to the internal evaluation logic
+ROLES = {"OP-JAVAAN-01": "COMMANDER", "TECH-ALPHA": "OPERATOR", "PILOT-BRAVO": "PILOT"}
 MANIFEST = {
-    "org": "STONEFLY \U0001F870", "platform": "Project Icarus \u2708\uFE0F",
+    "org": "STONEFLY 🪰", "platform": "Project Icarus ✈️",
     "themes": {"night": {"bg": "\033[40m", "fg": "\033[37m", "GREEN": "\033[92m", "VERIFIED": "\033[96m", "AMBER": "\033[93m", "RED": "\033[91m", "OUT": "\033[90m", "STAGED": "\033[95m", "BLOCKED": "\033[31m"}}
 }
 DAG = {
-    "node_id": "flight_ops", "name": "Flight Ops", "node_type": "root",
-    "children": [
-        {"node_id": "depot", "name": "Depot Prep", "node_type": "free_pool", "children": [
-            {"node_id": "pack_bats", "name": "Pack Batteries", "node_type": "leaf"},
-            {"node_id": "payload", "name": "Optical Payload", "node_type": "leaf"}
+    "node_id": "op_icarus_tactical", "name": "Operation Icarus: Tactical Islanding", "node_type": "root", "children": [
+        
+        # --- PHASE 1: DEPOT ---
+        {"node_id": "phase_1_depot", "name": "Phase 1: Depot Operations", "node_type": "barrier", "children": [
+            {"node_id": "tool_packing", "name": "Pack 50-Piece Master Tool Kit", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "airframe_manifest", "name": "Airframe Manifest Verified", "node_type": "leaf", "prerequisite": "tool_packing", "duration_min": 10},
+            {"node_id": "ups_charge", "name": "All UPS & Jackery Units > 95%", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "crypto_sync", "name": "Mesh Crypto Keys Synchronized", "node_type": "leaf", "duration_min": 5}
         ]},
-        {"node_id": "auto_launcher", "name": "Automated Launch System Gate", "node_type": "barrier", "prerequisite": "depot", "children": [
-            {"node_id": "als_auth", "name": "Authorize ALS Engagement", "node_type": "leaf"},
-            {"node_id": "als_sequence", "name": "ALS Internal Execution", "node_type": "leaf", "prerequisite": "als_auth"}
+
+        # --- PHASE 2: LONG RANGE TRANSIT ---
+        {"node_id": "phase_2_transit", "name": "Phase 2: Transit & Site Security", "node_type": "barrier", "prerequisite": "phase_1_depot", "children": [
+            {"node_id": "convoy_arrive", "name": "Convoy Arrival at Target Site", "node_type": "leaf", "duration_min": 360},
+            {"node_id": "arrival_audit", "name": "Zero-Emission Inventory Audit", "node_type": "leaf", "prerequisite": "convoy_arrive", "duration_min": 10},
+            {"node_id": "perimeter_sec", "name": "Physical Perimeter Secured", "node_type": "leaf", "prerequisite": "arrival_audit", "duration_min": 15}
         ]},
-        {"node_id": "auth", "name": "Final Launch Authority", "node_type": "approval", "prerequisite": "auto_launcher"}
+
+        # --- PHASE 3: COMMS & GCS ---
+        {"node_id": "phase_3_gcs", "name": "Phase 3: Network & GCS Assembly", "node_type": "barrier", "prerequisite": "phase_2_transit", "children": [
+            {"node_id": "gen_power", "name": "Primary Generator Stable", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "starlink_lock", "name": "Starlink Dish Aligned & Sat Lock", "node_type": "leaf", "prerequisite": "gen_power", "duration_min": 5},
+            {"node_id": "tac_rf_mast", "name": "Tactical RF Mast Raised", "node_type": "leaf", "duration_min": 15},
+            {"node_id": "gcs_boot", "name": "GCS Clean Boot & UPS > 80%", "node_type": "leaf", "prerequisite": "gen_power", "duration_min": 5},
+            {"node_id": "rem_hotspot", "name": "Remote: Telstra LTE / Hotspot Functional", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "voice_comms", "name": "Voice Rollcall Across All Nodes", "node_type": "leaf", "prerequisite": "starlink_lock", "duration_min": 3}
+        ]},
+
+        # --- PHASE 5: AIRFRAME & AVIONICS ---
+        {"node_id": "phase_5_airframe", "name": "Phase 5: Airframe & FCU Initialization", "node_type": "barrier", "prerequisite": "phase_3_gcs", "children": [
+            {"node_id": "wing_spars", "name": "Wing Spars Locked & Pinned", "node_type": "leaf", "duration_min": 10},
+            {"node_id": "load_bats", "name": "Load Flight Batteries & Secure Hatches", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "fcu_power", "name": "Apply Power to Flight Control Unit", "node_type": "leaf", "prerequisite": "load_bats", "duration_min": 1},
+            {"node_id": "telemetry_link", "name": "GCS MAVLink Heartbeat Established", "node_type": "leaf", "prerequisite": "fcu_power", "duration_min": 2},
+            {"node_id": "rc_link", "name": "RC Radio Live & Failsafe Verified", "node_type": "leaf", "prerequisite": "telemetry_link", "duration_min": 2},
+            {"node_id": "gps_3d_fix", "name": "GPS 3D Fix & EKF3 Aligned", "node_type": "leaf", "prerequisite": "telemetry_link", "duration_min": 5}
+        ]},
+
+        # --- PHASE 6: CONTESTED LAUNCH & ISLANDING ---
+        {"node_id": "phase_6_launch", "name": "Phase 6: EMCON Launch Execution", "node_type": "barrier", "prerequisite": "phase_5_airframe", "children": [
+            {"node_id": "car_rigged", "name": "Launcher Roof Rigging Secure", "node_type": "leaf", "duration_min": 10},
+            {"node_id": "release_test", "name": "Pre-Mount Release Mech Test (Dry Fire)", "node_type": "leaf", "prerequisite": "car_rigged", "duration_min": 2},
+            {"node_id": "mount_airframe", "name": "Mount Airframe to Car Rails", "node_type": "leaf", "prerequisite": "release_test", "duration_min": 5},
+            
+            # AUTOMATED INVENTORY GATE: Checks global ledger for tools
+            {"node_id": "flight_line_tool_sweep", "name": "Automated Master Tool Sweep (Accounted)", "node_type": "inventory_gate", "target_item": "ALL", "max_allowed_out": 0, "prerequisite": "mount_airframe"},
+            
+            {"node_id": "launch_auth", "name": "Commander Launch Authority", "node_type": "approval", "prerequisite": "flight_line_tool_sweep"},
+            {"node_id": "launch_emcon", "name": "ENGAGE EMCON: Tactical Blackout", "node_type": "leaf", "prerequisite": "launch_auth", "duration_min": 1},
+            {"node_id": "car_speed", "name": "Car Accelerating to Target V-Speed", "node_type": "leaf", "prerequisite": "launch_emcon", "duration_min": 2},
+            {"node_id": "release_mech", "name": "Airframe Release Mechanism Triggered", "node_type": "leaf", "prerequisite": "car_speed", "duration_min": 1},
+            {"node_id": "car_rtb", "name": "Car Decelerate & RTB to Perimeter", "node_type": "leaf", "prerequisite": "release_mech", "duration_min": 4},
+            {"node_id": "emcon_drop", "name": "TERMINATE EMCON: Links Restored", "node_type": "leaf", "prerequisite": "car_rtb", "duration_min": 1},
+            {"node_id": "climb_out", "name": "Positive Rate of Climb Confirmed via GCS", "node_type": "leaf", "prerequisite": "emcon_drop", "duration_min": 1}
+        ]},
+
+        # --- PHASE 7 & 8: RECOVERY & POST-FLIGHT ---
+        {"node_id": "phase_7_recovery", "name": "Phase 7: Recovery Sequence", "node_type": "barrier", "prerequisite": "phase_6_launch", "children": [
+            {"node_id": "clear_airspace", "name": "Clear Recovery Airspace", "node_type": "leaf", "duration_min": 5},
+            {"node_id": "engine_cut", "name": "Engine Cut / Touchdown", "node_type": "leaf", "prerequisite": "clear_airspace", "duration_min": 1},
+            {"node_id": "disarm_fcu", "name": "Disarm FCU & Main Power Off", "node_type": "leaf", "prerequisite": "engine_cut", "duration_min": 2}
+        ]},
+        {"node_id": "phase_8_rtb", "name": "Phase 8: RTB & Depot Inbound", "node_type": "barrier", "prerequisite": "phase_7_recovery", "children": [
+            {"node_id": "data_offload", "name": "Raw Data Log Exfiltration", "node_type": "leaf", "duration_min": 20},
+            {"node_id": "site_sterile", "name": "Sterilize Site / Leave No Trace", "node_type": "leaf", "prerequisite": "data_offload", "duration_min": 15},
+            {"node_id": "convoy_rtb", "name": "Convoy Transit Return to Depot", "node_type": "leaf", "prerequisite": "site_sterile", "duration_min": 360},
+            {"node_id": "mission_close", "name": "Commander Mission Closeout", "node_type": "approval", "prerequisite": "convoy_rtb"}
+        ]}
     ]
 }
-
 # --- 2. NETWORK PROTOCOL UTILITIES ---
 def send_msg(sock, data):
     sock.sendall((json.dumps(data) + "\n").encode('utf-8'))
@@ -298,6 +355,16 @@ class StoneflyDaemon:
             elif ntype == "approval":
                 lt_app = next((e for e in reversed(ledger) if e["target_id"] == n_id and e["action"] == "APPROVE"), None)
                 st = "GREEN" if lt_app and ROLES.get(lt_app["actor_id"]) == "COMMANDER" else "STAGED"
+                
+            elif ntype == "inventory_gate":
+                inv_state = self.evaluate_inventory(node.get("target_item"))
+                max_allowed_out = node.get("max_allowed_out", 0)
+                if inv_state["total_owned"] == 0:
+                    st = "UNINITIALIZED"
+                elif inv_state["currently_deployed"] > max_allowed_out:
+                    st = "BLOCKED"
+                else:
+                    st = "GREEN"
             else:
                 if not children: st = "UNINITIALIZED"
                 elif any(s == "RED" for s in c_sts): st = "RED"
@@ -322,7 +389,29 @@ class StoneflyDaemon:
 
         eval_n(DAG["node_id"])
         return {"session": self.current_session, "dag": DAG}
+   def evaluate_inventory(self, target_item):
+        """Calculates physical tool assets deployed vs returned."""
+        cur = self.conn.cursor()
+        if target_item == "ALL":
+            cur.execute("SELECT target_id, action, payload FROM event_ledger WHERE action IN ('ADD_STOCK', 'CHECK_OUT', 'CHECK_IN') ORDER BY lamport ASC")
+        else:
+            cur.execute("SELECT target_id, action, payload FROM event_ledger WHERE target_id=? AND action IN ('ADD_STOCK', 'CHECK_OUT', 'CHECK_IN') ORDER BY lamport ASC",     (target_item,))
+        
+        inventory_map = {}
+        for ev in cur.fetchall():
+            tid = ev["target_id"]
+            if tid not in inventory_map: inventory_map[tid] = {"owned": 0, "out": 0}
+            try: data = json.loads(ev["payload"])
+            except: data = {}
+            qty = data.get("qty", 1)
+            
+            if ev["action"] == "ADD_STOCK": inventory_map[tid]["owned"] += qty
+            elif ev["action"] == "CHECK_OUT": inventory_map[tid]["out"] += qty
+            elif ev["action"] == "CHECK_IN": inventory_map[tid]["out"] = max(0, inventory_map[tid]["out"] - qty)
 
+        total_owned = sum(i["owned"] for i in inventory_map.values())
+        total_out = sum(i["out"] for i in inventory_map.values())
+        return {"total_owned": total_owned, "currently_deployed": total_out}
     def _ipc_listener(self):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

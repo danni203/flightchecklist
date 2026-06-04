@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loadmaster: Weight & Balance Twin</title>
+    <style>
+        /* --- DESIGN TOKENS (Silicon Valley Prime Aesthetic) --- */
+        :root {
+            --bg-canvas: #0f172a;      /* Slate 900 */
+            --bg-header: #020617;      /* Slate 950 */
+            --bg-card: #1e293b;        /* Slate 800 */
+            --border-card: #334155;    /* Slate 700 */
+            
+            --text-main: #f8fafc;      /* Slate 50 */
+            --text-muted: #94a3b8;     /* Slate 400 */
+            --text-heading: #cbd5e1;   /* Slate 300 */
+            
+            --status-nominal: #0ea5e9; /* Sky 500 */
+            --status-warning: #f59e0b; /* Amber 500 */
+            --status-critical: #f97316; /* Orange 500 */
+            --status-critical-bg: rgba(249, 115, 22, 0.1);
+            
+            --font-ui: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Roboto Mono', Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-main);
+            font-family: var(--font-ui);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER --- */
+        header {
+            background-color: var(--bg-header);
+            border-bottom: 1px solid var(--border-card);
+            height: 48px;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title { font-family: var(--font-mono); font-size: 13px; font-weight: 600; letter-spacing: 1px; }
+        .header-context { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
+
+        /* --- LAYOUT --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 16px;
+            padding: 16px;
+            flex-grow: 1;
+            height: calc(100vh - 48px);
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-card);
+            color: var(--text-heading);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* --- 3D SCHEMATIC VIEW --- */
+        .schematic-container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle, #1e293b 0%, #0f172a 100%);
+            position: relative;
+        }
+
+        .grid-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: 
+                linear-gradient(rgba(51, 65, 85, 0.3) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(51, 65, 85, 0.3) 1px, transparent 1px);
+            background-size: 40px 40px;
+            background-position: center center;
+            z-index: 1;
+        }
+
+        svg.uav-wireframe {
+            position: relative;
+            z-index: 2;
+            width: 80%;
+            max-height: 80%;
+            filter: drop-shadow(0 0 20px rgba(14, 165, 233, 0.1));
+        }
+
+        .bay { fill: #0f172a; stroke: #475569; stroke-width: 2; transition: all 0.3s ease; }
+        .bay.active { fill: rgba(14, 165, 233, 0.2); stroke: var(--status-nominal); }
+        .airframe-outline { fill: none; stroke: #64748b; stroke-width: 2; }
+
+        /* --- METRICS PANEL --- */
+        .metrics-panel {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .metric-group { display: flex; flex-direction: column; gap: 8px; }
+        
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .metric-unit { font-size: 14px; color: var(--text-muted); }
+
+        /* CG Slider */
+        .cg-track {
+            height: 8px;
+            background-color: var(--bg-canvas);
+            border: 1px solid var(--border-card);
+            border-radius: 4px;
+            position: relative;
+            margin-top: 8px;
+        }
+
+        .cg-safe-zone {
+            position: absolute;
+            left: 45%; right: 45%; /* Represents +/- 50mm on a +/- 500mm scale */
+            height: 100%;
+            background-color: rgba(14, 165, 233, 0.2);
+            border-left: 1px solid var(--status-nominal);
+            border-right: 1px solid var(--status-nominal);
+        }
+
+        .cg-marker {
+            position: absolute;
+            top: -6px;
+            width: 4px;
+            height: 20px;
+            background-color: var(--text-main);
+            left: 50%; /* Center is 0 */
+            transform: translateX(-50%);
+            transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 8px rgba(255,255,255,0.5);
+        }
+
+        /* --- CHECKLIST --- */
+        .checklist {
+            flex-grow: 1;
+            padding: 0 24px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background-color: var(--bg-canvas);
+            border: 1px solid var(--border-card);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .task-item:hover { border-color: #475569; }
+
+        .checkbox-custom {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #64748b;
+            border-radius: 4px;
+            margin-right: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .task-item.checked { border-color: rgba(14, 165, 233, 0.4); }
+        .task-item.checked .checkbox-custom {
+            background-color: var(--status-nominal);
+            border-color: var(--status-nominal);
+        }
+
+        .task-item.checked .checkbox-custom::after {
+            content: '';
+            width: 4px; height: 8px;
+            border: solid var(--bg-canvas);
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+            margin-bottom: 2px;
+        }
+
+        .task-details { display: flex; flex-direction: column; flex-grow: 1; }
+        .task-name { font-size: 13px; font-weight: 600; }
+        .task-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .task-bay { font-family: var(--font-mono); font-size: 11px; color: var(--text-heading); background: #334155; padding: 2px 6px; border-radius: 4px;}
+
+        /* --- ALERT STATES --- */
+        .alert-banner {
+            display: none;
+            padding: 12px 24px;
+            background-color: var(--status-critical-bg);
+            border-bottom: 1px solid var(--status-critical);
+            color: var(--status-critical);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .state-warning .alert-banner { display: flex; }
+        .state-warning .metric-value.fault { color: var(--status-critical); }
+        .state-warning .cg-marker.fault { background-color: var(--status-critical); box-shadow: 0 0 12px var(--status-critical); }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">TACTICAL LOGISTICS : DIGITAL TWIN</div>
+        <div class="header-context">OP_ICARUS_TACTICAL // PHASE 1: DEPOT</div>
+    </header>
+
+    <div class="dashboard-grid">
+        
+        <div class="card" id="main-card">
+            <div class="alert-banner" id="alert-banner">
+                <span>⚠️ STRUCTURAL FAULT DETECTED: LAUNCH GATES LOCKED</span>
+            </div>
+            
+            <div class="schematic-container">
+                <div class="grid-overlay"></div>
+                
+                <svg class="uav-wireframe" viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg">
+                    <path class="airframe-outline" d="M200 50 C220 50, 230 100, 230 150 L230 450 C230 520, 210 550, 200 550 C190 550, 170 520, 170 450 L170 150 C170 100, 180 50, 200 50 Z" />
+                    
+                    <path class="airframe-outline" d="M170 250 L40 280 L40 320 L170 300 Z" />
+                    <path class="airframe-outline" d="M230 250 L360 280 L360 320 L230 300 Z" />
+                    
+                    <path class="airframe-outline" d="M185 500 L120 560 L130 580 L195 530 Z" />
+                    <path class="airframe-outline" d="M215 500 L280 560 L270 580露M205 530 Z" />
+
+                    <path id="bay-cam" class="bay" d="M200 60 C215 60, 220 80, 220 100 L180 100 C180 80, 185 60, 200 60 Z" />
+                    <rect id="bay-bat" class="bay" x="180" y="110" width="40" height="80" rx="4" />
+                    <rect id="bay-spr" class="bay" x="180" y="240" width="40" height="70" rx="4" />
+                    <rect id="bay-kit" class="bay" x="180" y="400" width="40" height="60" rx="4" />
+                    
+                    <text x="240" y="90" fill="#64748b" font-family="monospace" font-size="10">PAYLOAD</text>
+                    <line x1="220" y1="85" x2="235" y2="85" stroke="#64748b" />
+                    
+                    <text x="110" y="150" fill="#64748b" font-family="monospace" font-size="10">FWD-BAY</text>
+                    <line x1="165" y1="145" x2="180" y2="145" stroke="#64748b" />
+                    
+                    <text x="240" y="275" fill="#64748b" font-family="monospace" font-size="10">CTR-SPAR</text>
+                    <line x1="220" y1="270" x2="235" y2="270" stroke="#64748b" />
+
+                    <text x="110" y="435" fill="#64748b" font-family="monospace" font-size="10">AFT-BAY</text>
+                    <line x1="165" y1="430" x2="180" y2="430" stroke="#64748b" />
+                    
+                    <line x1="150" y1="275" x2="250" y2="275" stroke="#94a3b8" stroke-dasharray="4,4" />
+                    <text x="255" y="280" fill="#94a3b8" font-family="monospace" font-size="10">CG DATUM</text>
+                </svg>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">WEIGHT & BALANCE COMPUTATION</div>
+            
+            <div class="metrics-panel">
+                <div class="metric-group">
+                    <div class="metric-header">
+                        <span>TOTAL MASS</span>
+                        <span>MTOW LIMIT: 1300 KG</span>
+                    </div>
+                    <div class="metric-value" id="val-weight">
+                        1200 <span class="metric-unit">KG</span>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="metric-header">
+                        <span>CENTER OF GRAVITY OFFSET</span>
+                        <span>SAFE: ±50mm</span>
+                    </div>
+                    <div class="metric-value" id="val-cg">
+                        +0.0 <span class="metric-unit">MM</span>
+                    </div>
+                    <div class="cg-track">
+                        <div class="cg-safe-zone"></div>
+                        <div class="cg-marker" id="cg-marker"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-family:monospace; font-size:10px; color:#64748b; margin-top:4px;">
+                        <span>-500 FWD</span>
+                        <span>0 DATUM</span>
+                        <span>+500 AFT</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-header" style="border-top: 1px solid var(--border-card);">PHYSICAL MANIFEST</div>
+            
+            <div class="checklist">
+                
+                <div class="task-item" data-id="cam" onclick="toggleTask(this)">
+                    <div class="checkbox-custom"></div>
+                    <div class="task-details">
+                        <div class="task-name">Mount EO/IR Camera</div>
+                        <div class="task-meta">MASS: 20kg | ARM: -2500mm</div>
+                    </div>
+                    <div class="task-bay">PAYLOAD</div>
+                </div>
+
+                <div class="task-item" data-id="bat" onclick="toggleTask(this)">
+                    <div class="checkbox-custom"></div>
+                    <div class="task-details">
+                        <div class="task-name">Load Flight Batteries</div>
+                        <div class="task-meta">MASS: 50kg | ARM: -1500mm</div>
+                    </div>
+                    <div class="task-bay">FWD-BAY</div>
+                </div>
+
+                <div class="task-item" data-id="spr" onclick="toggleTask(this)">
+                    <div class="checkbox-custom"></div>
+                    <div class="task-details">
+                        <div class="task-name">Wing Spar Hardware</div>
+                        <div class="task-meta">MASS: 10kg | ARM: 0mm</div>
+                    </div>
+                    <div class="task-bay">CTR-SPAR</div>
+                </div>
+
+                <div class="task-item" data-id="kit" onclick="toggleTask(this)">
+                    <div class="checkbox-custom"></div>
+                    <div class="task-details">
+                        <div class="task-name">50-Piece Master Tool Kit</div>
+                        <div class="task-meta">MASS: 25kg | ARM: +2000mm</div>
+                    </div>
+                    <div class="task-bay">AFT-BAY</div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Physics & Data Model
+        const AIRFRAME = {
+            baseWeight: 1200, // kg
+            baseArm: 0,       // mm
+            maxMTOW: 1300,    // kg
+            cgLimit: 50       // +/- mm
+        };
+
+        const ITEMS = {
+            'cam': { weight: 20, arm: -2500, active: false, elementId: 'bay-cam' },
+            'bat': { weight: 50, arm: -1500, active: false, elementId: 'bay-bat' },
+            'spr': { weight: 10, arm: 0,     active: false, elementId: 'bay-spr' },
+            'kit': { weight: 25, arm: 2000,  active: false, elementId: 'bay-kit' }
+        };
+
+        // UI Elements
+        const elWeight = document.getElementById('val-weight');
+        const elCG = document.getElementById('val-cg');
+        const elMarker = document.getElementById('cg-marker');
+        const elMainCard = document.getElementById('main-card');
+        const elAlertBanner = document.getElementById('alert-banner');
+
+        function toggleTask(element) {
+            // Toggle visual state
+            element.classList.toggle('checked');
+            
+            // Update Data Model
+            const id = element.getAttribute('data-id');
+            ITEMS[id].active = element.classList.contains('checked');
+            
+            // Update SVG Visuals
+            const svgBay = document.getElementById(ITEMS[id].elementId);
+            if (ITEMS[id].active) {
+                svgBay.classList.add('active');
+            } else {
+                svgBay.classList.remove('active');
+            }
+
+            calculatePhysics();
+        }
+
+        function calculatePhysics() {
+            let totalWeight = AIRFRAME.baseWeight;
+            let totalMoment = AIRFRAME.baseWeight * AIRFRAME.baseArm;
+
+            // Sum up weights and moments
+            for (const key in ITEMS) {
+                if (ITEMS[key].active) {
+                    totalWeight += ITEMS[key].weight;
+                    totalMoment += (ITEMS[key].weight * ITEMS[key].arm);
+                }
+            }
+
+            // Calculate Center of Gravity (CG = Total Moment / Total Weight)
+            let cg = totalWeight > 0 ? (totalMoment / totalWeight) : 0;
+            
+            updateReadouts(totalWeight, cg);
+        }
+
+        function updateReadouts(weight, cg) {
+            // Format Strings
+            const sign = cg > 0 ? '+' : '';
+            const cgFormatted = cg.toFixed(1);
+            
+            elWeight.innerHTML = `${weight} <span class="metric-unit">KG</span>`;
+            elCG.innerHTML = `${sign}${cgFormatted} <span class="metric-unit">MM</span>`;
+
+            // Calculate Marker Position (Scale: -500mm to +500mm maps to 0% to 100% width)
+            // Range is 1000. 0 is 50%.
+            let percentage = ((cg + 500) / 1000) * 100;
+            // Clamp visual slider to bounds
+            percentage = Math.max(0, Math.min(100, percentage));
+            elMarker.style.left = `${percentage}%`;
+
+            // Check Faults
+            let isFault = false;
+            let faultMessage = "";
+
+            if (weight > AIRFRAME.maxMTOW) {
+                isFault = true;
+                faultMessage = `⚠️ OVERWEIGHT: EXCEEDS MTOW LIMIT (${AIRFRAME.maxMTOW}KG)`;
+                elWeight.classList.add('fault');
+            } else {
+                elWeight.classList.remove('fault');
+            }
+
+            if (Math.abs(cg) > AIRFRAME.cgLimit) {
+                isFault = true;
+                faultMessage = `⚠️ CG OUT OF BOUNDS: SAFE VARIANCE IS ±${AIRFRAME.cgLimit}MM`;
+                elCG.classList.add('fault');
+                elMarker.classList.add('fault');
+            } else {
+                elCG.classList.remove('fault');
+                elMarker.classList.remove('fault');
+            }
+
+            // Apply Fault Visuals
+            if (isFault) {
+                elMainCard.classList.add('state-warning');
+                elAlertBanner.innerHTML = `<span>${faultMessage}</span>`;
+            } else {
+                elMainCard.classList.remove('state-warning');
+            }
+        }
+
+        // Initialize display
+        calculatePhysics();
+    </script>
+</body>
+</html>

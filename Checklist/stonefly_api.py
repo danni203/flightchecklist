@@ -2,6 +2,9 @@
 import os
 import json
 import base64
+import threading # For the Ghost Crew background thread
+import time      #  For Ghost Crew delays
+import random    #  For randomized AI clicks
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -23,6 +26,40 @@ ROOT_PUB_KEY_B64 = "XlcdSojY+2X6PTNiuOYRmu/+aROjtE1FzFY0rH8l+lU="
 
 engine = StoneflyDaemon(node_id=NODE_ID, ipc_port=IPC_PORT, gossip_port=GOSSIP_PORT)
 
+
+# GHOST CREW AUTOPILOT LOGIC ---
+# Using a dictionary makes this thread-safe and immune to global scope errors
+GHOST_STATE = {"active": False}
+
+def ghost_crew_loop():
+    """Background AI thread that automatically completes available tasks."""
+    while True:
+        if GHOST_STATE["active"]:
+            try:
+                state = engine.evaluate()
+                
+                # Find all tasks that are currently available to be ticked
+                available_tasks = []
+                for task_id, status in state.items():
+                    if status in ["UNINITIALIZED", "ACTIVE", "STAGED"] and task_id not in ["op_icarus_tactical", "phase_1_depot", "phase_2_transit", "phase_3_gcs", "phase_5_airframe", "phase_6_launch", "phase_7_recovery", "phase_8_rtb"]:
+                        available_tasks.append(task_id)
+
+                if available_tasks:
+                    # Pick a random available task
+                    target = random.choice(available_tasks)
+                    # Use a bypass actor ID to show it was the AI
+                    engine.log_event(action="TICK", target=target, actor="AI_GHOST_CREW", payload="")
+                    print(f"\033[95m[GHOST CREW] Auto-Ticked: {target}\033[0m")
+                    
+            except Exception as e:
+                print(f"Ghost Crew Error: {e}")
+                
+        # Wait 3 to 6 seconds before making the next move
+        time.sleep(random.uniform(3.0, 6.0))
+
+# Start the Ghost Crew thread in the background
+threading.Thread(target=ghost_crew_loop, daemon=True).start()
+
 # --- Pydantic V2 Schemas ---
 class IdentityPayload(BaseModel):
     crew_id: str
@@ -41,17 +78,30 @@ class ActionPayload(BaseModel):
     payload: Optional[str] = ""
 
 # --- RBAC Ownership Map ---
+# --- RBAC Ownership Map for Operation Icarus ---
 TASK_OWNERS = {
-    "pack_bats": ["OPERATOR"],
-    "payload": ["OPERATOR", "PILOT"],
-    "als_auth": ["PILOT", "COMMANDER"],
-    "auth": ["COMMANDER"]
+    "tool_packing": ["OPERATOR"], "airframe_manifest": ["OPERATOR"], "ups_charge": ["OPERATOR"], "crypto_sync": ["COMMANDER"],
+    "convoy_arrive": ["OPERATOR"], "arrival_audit": ["COMMANDER"], "perimeter_sec": ["OPERATOR"],
+    "gen_power": ["OPERATOR"], "starlink_lock": ["COMMANDER"], "tac_rf_mast": ["OPERATOR"], "gcs_boot": ["COMMANDER"], "rem_hotspot": ["PILOT"], "voice_comms": ["COMMANDER"],
+    "wing_spars": ["OPERATOR"], "load_bats": ["OPERATOR"], "fcu_power": ["OPERATOR"], "telemetry_link": ["PILOT"], "rc_link": ["PILOT"], "gps_3d_fix": ["PILOT"],
+    "car_rigged": ["OPERATOR"], "release_test": ["OPERATOR"], "mount_airframe": ["OPERATOR"], 
+    "launch_auth": ["COMMANDER"], "launch_emcon": ["COMMANDER"], "car_speed": ["OPERATOR"], "release_mech": ["OPERATOR"], "car_rtb": ["OPERATOR"], "emcon_drop": ["OPERATOR"], "climb_out": ["PILOT"],
+    "clear_airspace": ["PILOT"], "engine_cut": ["PILOT"], "disarm_fcu": ["OPERATOR"], "data_offload": ["COMMANDER"], "site_sterile": ["OPERATOR"], "convoy_rtb": ["OPERATOR"], "mission_close": ["COMMANDER"]
 }
-
 @app.get("/")
 def serve_frontend():
-    return FileResponse("index.html")
-
+    return FileResponse("dashboard.html")
+    
+    
+# Endpoint to toggle the Ghost Crew ---
+@app.post("/toggle_ghost")
+def toggle_ghost():
+    # Flip the boolean inside the dictionary
+    GHOST_STATE["active"] = not GHOST_STATE["active"]
+    status = "ENGAGED" if GHOST_STATE["active"] else "DISENGAGED"
+    return {"message": f"Ghost Crew {status}", "active": GHOST_STATE["active"]}
+    
+    
 @app.post("/auth")
 def authenticate_operator(pkg: CredentialPackage):
     try:

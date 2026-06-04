@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactical Mission Dashboard</title>
+    <style>
+        /* --- DESIGN TOKENS (Silicon Valley Prime Aesthetic) --- */
+        :root {
+            --bg-canvas: #0f172a;      /* Slate 900 */
+            --bg-header: #020617;      /* Slate 950 */
+            --bg-card: #1e293b;        /* Slate 800 */
+            --border-card: #334155;    /* Slate 700 */
+            
+            --text-main: #f8fafc;      /* Slate 50 */
+            --text-muted: #94a3b8;     /* Slate 400 */
+            --text-heading: #cbd5e1;   /* Slate 300 */
+            
+            --status-nominal: #0ea5e9; /* Sky 500 */
+            --status-nominal-bg: #0369a1; 
+            --status-nominal-text: #e0f2fe;
+            
+            --status-warning: #f59e0b; /* Amber 500 */
+            --status-warning-bg: rgba(245, 158, 11, 0.1);
+            
+            --status-critical: #f97316; /* Orange 500 */
+            --status-critical-bg: rgba(249, 115, 22, 0.1);
+            
+            --font-ui: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Roboto Mono', Consolas, monospace;
+        }
+
+        /* --- GLOBAL STYLES --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-main);
+            font-family: var(--font-ui);
+            line-height: 1.5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER RIBBON --- */
+        header {
+            background-color: var(--bg-header);
+            border-bottom: 1px solid var(--border-card);
+            height: 48px;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge-secure {
+            background-color: var(--status-nominal-bg);
+            color: var(--status-nominal-text);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .mission-timer {
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* --- BENTO GRID LAYOUT --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* --- CARD COMPONENTS --- */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header {
+            color: var(--text-heading);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-header::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 12px;
+            background-color: var(--text-muted);
+        }
+
+        /* --- RADAR CHART SECTION --- */
+        .readiness-container {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .radar-chart {
+            width: 250px;
+            height: 250px;
+            background: radial-gradient(circle, var(--border-card) 1px, transparent 1px) 0 0 / 20px 20px;
+            border-radius: 50%;
+            border: 1px dashed var(--border-card);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .radar-polygon {
+            fill: rgba(14, 165, 233, 0.2);
+            stroke: var(--status-nominal);
+            stroke-width: 2;
+        }
+
+        .readiness-score h1 {
+            font-size: 64px;
+            line-height: 1;
+        }
+        
+        .readiness-score p {
+            color: var(--status-nominal);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        /* --- TRAJECTORY & TIMELINE --- */
+        .timeline {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: var(--border-card);
+            z-index: 0;
+        }
+
+        .milestone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 1;
+        }
+
+        .dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: var(--bg-card);
+            border: 2px solid var(--border-card);
+        }
+
+        .dot.locked { border-color: var(--status-nominal); background-color: var(--status-nominal); }
+        .dot.syncing { border-color: var(--status-warning); animation: pulse 2s infinite; }
+        
+        .milestone span {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* --- TRACKS (Human/AI Progress) --- */
+        .track {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+        
+        .track-label { width: 140px; color: var(--text-muted); }
+        
+        .track-bar-container {
+            flex-grow: 1;
+            height: 4px;
+            background-color: var(--border-card);
+            border-radius: 2px;
+            position: relative;
+        }
+
+        .track-bar {
+            height: 100%;
+            border-radius: 2px;
+            background-color: var(--status-nominal);
+        }
+
+        .track-bar.delayed { background-color: var(--status-warning); }
+        
+        /* --- EXCEPTION FEED --- */
+        .alert {
+            border-left: 3px solid;
+            padding: 12px;
+            margin-bottom: 8px;
+            background-color: var(--bg-canvas);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .alert.warning { border-color: var(--status-warning); background-color: var(--status-warning-bg); }
+        .alert.critical { border-color: var(--status-critical); background-color: var(--status-critical-bg); }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            margin-bottom: 4px;
+            color: var(--text-muted);
+        }
+
+        .alert-body { font-size: 13px; font-weight: 500; }
+
+        /* --- ASYNC TASK LIST --- */
+        .task-list { display: flex; flex-direction: column; gap: 8px; }
+
+        .task {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background-color: var(--bg-canvas);
+            border-radius: 4px;
+            border: 1px solid transparent;
+        }
+
+        .task-left { display: flex; align-items: center; gap: 12px; }
+        .task-owner { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+
+        /* Task States */
+        .task-indicator { width: 16px; height: 16px; border-radius: 2px; }
+        
+        .task.locked { border-color: rgba(14, 165, 233, 0.3); }
+        .task.locked .task-indicator { background-color: var(--status-nominal); }
+        
+        .task.local-commit { border: 1px dashed var(--status-warning); background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(245, 158, 11, 0.05) 5px, rgba(245, 158, 11, 0.05) 10px); }
+        .task.local-commit .task-indicator { border: 2px dashed var(--status-warning); background-color: transparent; }
+        
+        .task.syncing { border-color: rgba(245, 158, 11, 0.3); }
+        .task.syncing .task-indicator { background-color: var(--status-warning); animation: pulse 1.5s infinite; }
+
+        /* --- ANIMATIONS --- */
+        @keyframes pulse {
+            0% { opacity: 1; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge-secure">LINK: SATCOM [SECURE] | LATENCY: 45ms</div>
+        <div class="mission-timer">OP TIME: T-12:05:01 | PHASE 6 ETA: 04:00</div>
+    </header>
+
+    <div class="dashboard-grid">
+        
+        <div class="column">
+            
+            <div class="card">
+                <div class="card-header">Unified Readiness</div>
+                <div class="readiness-container">
+                    
+                    <div class="radar-chart">
+                        <svg width="200" height="200" viewBox="0 0 200 200">
+                            <polygon points="100,20 170,60 170,140 100,180 30,140 30,60" fill="none" stroke="#334155" stroke-width="1"/>
+                            <polygon points="100,60 135,80 135,120 100,140 65,120 65,80" fill="none" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="100" y2="20" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="170" y2="60" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="170" y2="140" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="100" y2="180" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="30" y2="140" stroke="#334155" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="30" y2="60" stroke="#334155" stroke-width="1"/>
+                            
+                            <polygon class="radar-polygon" points="100,30 170,60 160,135 100,170 50,130 45,70"/>
+                            
+                            <text x="100" y="12" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="middle">AIRFRAME</text>
+                            <text x="175" y="55" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="start">LOGISTICS</text>
+                            <text x="175" y="150" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="start">SECURITY</text>
+                            <text x="100" y="195" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="middle">MISSION</text>
+                            <text x="25" y="150" fill="#f59e0b" font-size="10" font-family="monospace" text-anchor="end">COMMS</text>
+                            <text x="25" y="55" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="end">INTEL</text>
+                        </svg>
+                    </div>
+
+                    <div class="readiness-score">
+                        <h1>87%</h1>
+                        <p>SYSTEM READY</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="flex-grow: 1;">
+                <div class="card-header">Mission Trajectory</div>
+                
+                <div class="timeline">
+                    <div class="milestone"><div class="dot locked"></div><span>P1:DEPOT</span></div>
+                    <div class="milestone"><div class="dot locked"></div><span>P2:TRNST</span></div>
+                    <div class="milestone"><div class="dot syncing"></div><span style="color: #f59e0b;">P3:GCS</span></div>
+                    <div class="milestone"><div class="dot"></div><span>P6:LNCH</span></div>
+                    <div class="milestone"><div class="dot"></div><span>P7:RCVR</span></div>
+                </div>
+
+                <div style="border-top: 1px solid var(--border-card); margin: 16px 0;"></div>
+
+                <div class="track">
+                    <div class="track-label">Loadmaster Alpha</div>
+                    <div class="track-bar-container"><div class="track-bar" style="width: 85%;"></div></div>
+                </div>
+                <div class="track">
+                    <div class="track-label">Operator Beta</div>
+                    <div class="track-bar-container"><div class="track-bar delayed" style="width: 60%;"></div></div>
+                </div>
+                <div class="track">
+                    <div class="track-label">AI-Pilot Agent</div>
+                    <div class="track-bar-container"><div class="track-bar" style="width: 100%; background-color: #10B981;"></div></div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="column">
+            
+            <div class="card">
+                <div class="card-header">Exception Feed</div>
+                <div class="alert warning">
+                    <div class="alert-header"><span>PHASE 3</span><span>T-12:02:11</span></div>
+                    <div class="alert-body">Starlink Jams - Dropping to local P2P Mesh.</div>
+                </div>
+                <div class="alert critical">
+                    <div class="alert-header"><span>PHASE 6</span><span>T-12:04:50</span></div>
+                    <div class="alert-body">Conflicting Master Tool Count (49/50). Gate Locked.</div>
+                </div>
+            </div>
+
+            <div class="card" style="flex-grow: 1;">
+                <div class="card-header">Phase 6: EMCON Launch [EDGE CACHE]</div>
+                <div class="task-list">
+                    
+                    <div class="task locked">
+                        <div class="task-left">
+                            <div class="task-indicator"></div>
+                            <span>Car Rigged</span>
+                        </div>
+                        <div class="task-owner">LM</div>
+                    </div>
+
+                    <div class="task local-commit">
+                        <div class="task-left">
+                            <div class="task-indicator"></div>
+                            <span>Mount Airframe to Rails</span>
+                        </div>
+                        <div class="task-owner">LM</div>
+                    </div>
+
+                    <div class="task syncing">
+                        <div class="task-left">
+                            <div class="task-indicator"></div>
+                            <span>Pre-Mount Release Mech Test</span>
+                        </div>
+                        <div class="task-owner">SYS</div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

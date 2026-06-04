@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactical Mission Dashboard</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        /* --- DESIGN TOKENS --- */
+        :root {
+            --bg-canvas: #0f172a; --bg-header: #020617; --bg-card: #1e293b; --border-card: #334155;
+            --text-main: #f8fafc; --text-muted: #94a3b8; --text-heading: #cbd5e1;
+            --status-nominal: #0ea5e9; --status-nominal-bg: #0369a1; --status-nominal-text: #e0f2fe;
+            --status-warning: #f59e0b; --status-warning-bg: rgba(245, 158, 11, 0.1);
+            --status-critical: #f97316; --status-critical-bg: rgba(249, 115, 22, 0.1);
+            --status-success: #10b981; /* Green for completed tasks */
+            --font-ui: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Roboto Mono', Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg-canvas); color: var(--text-main); font-family: var(--font-ui); line-height: 1.5; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        header { background-color: var(--bg-header); border-bottom: 1px solid var(--border-card); height: 48px; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .badge-secure { background-color: var(--status-nominal-bg); color: var(--status-nominal-text); font-family: var(--font-mono); font-size: 12px; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+        .mission-timer { font-family: var(--font-mono); color: var(--text-muted); font-size: 14px; font-weight: 600; display: flex; gap: 15px; align-items: center;}
+
+        /* Ghost Crew Button */
+        #ghost-btn { background: #1e293b; color: var(--text-heading); border: 1px solid var(--border-card); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-family: var(--font-mono); font-size: 12px; transition: all 0.2s;}
+        #ghost-btn:hover { border-color: var(--status-warning); }
+
+        .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; padding: 16px; flex-grow: 1; overflow-y: auto; }
+        .column { display: flex; flex-direction: column; gap: 16px; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; }
+        .card-header { color: var(--text-heading); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .card-header::before { content: ''; display: inline-block; width: 4px; height: 12px; background-color: var(--text-muted); }
+
+        /* Auth Overlay */
+        #auth-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; position: absolute; top:0; left:0; width: 100vw; height: 100vh; background: var(--bg-canvas); z-index: 1000; }
+        #reader { width: 400px; border: 1px solid var(--border-card); background: var(--bg-card); border-radius: 8px; overflow: hidden; margin-bottom: 20px;}
+        #auth-status { color: var(--status-warning); font-family: var(--font-mono); font-weight: bold; }
+        
+        #app-wrapper { display: none; height: 100%; flex-direction: column; } /* Hidden until auth */
+
+        /* Task & DAG Styles */
+        .task-list { display: flex; flex-direction: column; gap: 8px; margin-left: 10px; border-left: 1px dashed var(--border-card); padding-left: 15px; margin-bottom: 10px;}
+        .task { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background-color: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid transparent; cursor: pointer; transition: all 0.2s;}
+        .task:hover { background-color: rgba(255,255,255,0.05); border-color: var(--border-card); }
+        .task-left { display: flex; align-items: center; gap: 12px; font-size: 14px;}
+        .task-owner { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;}
+        
+        .task-indicator { width: 12px; height: 12px; border-radius: 2px; }
+        
+        /* Dynamic States */
+        .task.phase-header { background: transparent; cursor: default; border: none; font-weight: bold; color: var(--status-nominal); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; padding: 5px 0;}
+        .task.status-UNINITIALIZED .task-indicator { border: 1px solid var(--border-card); }
+        .task.status-ACTIVE .task-indicator { border: 1px solid var(--status-nominal); background-color: rgba(14, 165, 233, 0.2); }
+        .task.status-GREEN .task-indicator, .task.status-VERIFIED .task-indicator { background-color: var(--status-success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+        .task.status-BLOCKED .task-indicator { background-color: var(--status-critical); }
+        .task.status-STAGED .task-indicator { background-color: #a855f7; }
+        
+        /* Layout fix for aesthetic widgets */
+        .readiness-container, .timeline, .track { opacity: 0.7; pointer-events: none; } /* Grayed out decorative elements */
+    </style>
+</head>
+<body>
+
+    <div id="auth-overlay">
+        <h2 style="font-family: var(--font-mono); margin-bottom: 20px; color: var(--text-heading);">[ OPTICAL AUTH REQUIRED ]</h2>
+        <div id="reader"></div>
+        <div id="auth-status">Awaiting Badge Scan...</div>
+    </div>
+
+    <div id="app-wrapper">
+        <header>
+            <div class="badge-secure">OP: <span id="current-user">LOADING...</span> | SESSION: <span id="session-id">---</span></div>
+            <div class="mission-timer">
+                <button id="ghost-btn" onclick="toggleGhostCrew()">👻 GHOST CREW: OFF</button>
+                <span>LIVE MESH ACTIVE</span>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            
+            <div class="column">
+                <div class="card">
+                    <div class="card-header">Mission Trajectory (Simulated)</div>
+                    <div class="timeline">
+                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-nominal); border-radius:50%;"></div><span>P1</span></div>
+                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-nominal); border-radius:50%;"></div><span>P2</span></div>
+                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-warning); border-radius:50%;"></div><span style="color:var(--status-warning);">P3</span></div>
+                        <div class="milestone"><div style="width:12px; height:12px; border:2px solid var(--border-card); border-radius:50%;"></div><span>P6</span></div>
+                    </div>
+                </div>
+
+                <div class="card" style="flex-grow: 1;">
+                    <div class="card-header">Live Operational State (DAG)</div>
+                    <div id="dag-container" style="overflow-y: auto; max-height: 60vh;">
+                        Loading Matrix...
+                    </div>
+                </div>
+            </div>
+
+            <div class="column">
+                <div class="card">
+                    <div class="card-header">Network / Exception Feed</div>
+                    <div id="alert-feed">
+                        <div style="border-left: 3px solid var(--status-nominal); padding: 12px; background: var(--status-nominal-bg); color: var(--text-main); font-size: 13px; border-radius: 0 4px 4px 0;">
+                            mDNS Gossip Daemon Online. Awaiting state sync.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let actorId = null;
+        let actorRole = null;
+        let html5QrcodeScanner = null;
+
+        // 1. AUTH LOGIC
+        async function onScanSuccess(decodedText) {
+            html5QrcodeScanner.clear();
+            document.getElementById('auth-status').innerText = "Validating Ed25519 Signature...";
+            document.getElementById('auth-status').style.color = "var(--status-nominal)";
+
+            try {
+                const credentialPackage = JSON.parse(decodedText);
+                const response = await fetch('/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(credentialPackage)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    actorId = data.crew_id;
+                    actorRole = data.role;
+                    
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    document.getElementById('app-wrapper').style.display = 'flex';
+                    document.getElementById('current-user').innerText = `${actorId} [${actorRole}]`;
+                    
+                    fetchState();
+                    setInterval(fetchState, 2000); // 2s background sync loop
+                } else {
+                    throw new Error("Cryptographic Rejection");
+                }
+            } catch (err) {
+                document.getElementById('auth-status').innerText = `ACCESS DENIED: ${err.message}`;
+                document.getElementById('auth-status').style.color = "var(--status-critical)";
+                setTimeout(() => html5QrcodeScanner.render(onScanSuccess, () => {}), 3000);
+            }
+        }
+        
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+        html5QrcodeScanner.render(onScanSuccess, () => {});
+        
+        // --- NEW: Dynamic Readiness & Radar Chart Engine ---
+        function updateReadinessMetrics(dag) {
+            // 1. Initialize our 6 radar categories
+            let metrics = {
+                airframe: { total: 0, done: 0 },
+                logistics: { total: 0, done: 0 },
+                security: { total: 0, done: 0 },
+                mission: { total: 0, done: 0 },
+                comms: { total: 0, done: 0 },
+                intel: { total: 0, done: 0 }
+            };
+
+            let totalNodes = 0;
+            let completedNodes = 0;
+
+            // 2. Recursively walk the DAG and categorize tasks
+            function walk(node, currentCategory) {
+                let cat = currentCategory;
+                
+                // Map specific phases to the Radar Chart axes
+                if (node.node_id === "phase_5_airframe") cat = "airframe";
+                if (node.node_id === "phase_1_depot" || node.node_id === "phase_2_transit" || node.node_id === "phase_8_rtb") cat = "logistics";
+                if (node.node_id === "perimeter_sec" || node.node_id === "crypto_sync") cat = "security";
+                if (node.node_id === "phase_6_launch" || node.node_id === "phase_7_recovery") cat = "mission";
+                if (node.node_id === "phase_3_gcs") cat = "comms";
+                if (node.node_id === "data_offload" || node.node_id === "airframe_manifest") cat = "intel";
+
+                // If it's an actionable task, tally it up
+                if (node.node_type === "leaf" || node.node_type === "inventory_gate" || node.node_type === "approval") {
+                    totalNodes++;
+                    let isDone = (node.status === "GREEN" || node.status === "VERIFIED" || node.status === "GREEN_OVR");
+                    if (isDone) completedNodes++;
+
+                    if (cat && metrics[cat]) {
+                        metrics[cat].total++;
+                        if (isDone) metrics[cat].done++;
+                    }
+                }
+
+                if (node.children) {
+                    node.children.forEach(c => walk(c, cat));
+                }
+            }
+
+            walk(dag, "mission"); // Start the recursive walk
+
+            // 3. Update the Big Percentage Score
+            let overallScore = totalNodes === 0 ? 0 : Math.round((completedNodes / totalNodes) * 100);
+            document.querySelector('.readiness-score h1').innerText = `${overallScore}%`;
+
+            let scoreText = document.querySelector('.readiness-score p');
+            if (overallScore === 100) {
+                scoreText.innerText = "SYSTEM READY";
+                scoreText.style.color = "var(--status-success)";
+            } else if (overallScore > 0) {
+                scoreText.innerText = "INITIALIZING";
+                scoreText.style.color = "var(--status-warning)";
+            } else {
+                scoreText.innerText = "OFFLINE";
+                scoreText.style.color = "var(--text-muted)";
+            }
+
+            // 4. Calculate SVG Trigonometry for the Radar Chart
+            // Converts a 0.0-1.0 score into a pixel radius (min 10px, max 80px)
+            const getScore = (cat) => metrics[cat].total === 0 ? 0 : metrics[cat].done / metrics[cat].total;
+            const r = (score) => 10 + (score * 70); 
+
+            // Calculate exact X/Y points for the polygon based on Hexagon angles
+            const pAir = `100,${100 - r(getScore('airframe'))}`; // Top (0 deg)
+            const pLog = `${100 + 0.866 * r(getScore('logistics'))},${100 - 0.5 * r(getScore('logistics'))}`; // Top-Right (30 deg)
+            const pSec = `${100 + 0.866 * r(getScore('security'))},${100 + 0.5 * r(getScore('security'))}`; // Bottom-Right (150 deg)
+            const pMis = `100,${100 + r(getScore('mission'))}`; // Bottom (180 deg)
+            const pCom = `${100 - 0.866 * r(getScore('comms'))},${100 + 0.5 * r(getScore('comms'))}`; // Bottom-Left (210 deg)
+            const pInt = `${100 - 0.866 * r(getScore('intel'))},${100 - 0.5 * r(getScore('intel'))}`; // Top-Left (330 deg)
+
+            // Inject the new coordinates into the SVG drawing
+            document.querySelector('.radar-polygon').setAttribute('points', `${pAir} ${pLog} ${pSec} ${pMis} ${pCom} ${pInt}`);
+            
+            // Add a cool transition to make it animate smoothly
+            document.querySelector('.radar-polygon').style.transition = "all 0.5s ease-out";
+        }
+
+        // 2. DAG RENDERING ENGINE
+        async function fetchState() {
+            if (!actorId) return; 
+            try {
+                const response = await fetch('/state');
+                if (!response.ok) return;
+                const data = await response.json();
+                document.getElementById('session-id').innerText = data.session || "---";
+                
+                updateReadinessMetrics(data.dag);
+                renderTree(data.dag, document.getElementById('dag-container'));
+            } catch (err) {
+                console.error("Network Error", err);
+            }
+        }
+
+        async function submitTick(nodeId) {
+            if (!actorId) return;
+            try {
+                const response = await fetch('/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "TICK", target: nodeId, actor: actorId, actor_role: actorRole })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    const alertFeed = document.getElementById('alert-feed');
+                    // Flash red alert on screen
+                    alertFeed.innerHTML = `
+                        <div style="border-left: 3px solid var(--status-critical); padding: 12px; background: var(--status-critical-bg); color: var(--text-main); font-size: 13px; border-radius: 0 4px 4px 0; margin-bottom: 8px;">
+                            <strong>RBAC BLOCKED:</strong> ${errData.detail}
+                        </div>
+                    ` + alertFeed.innerHTML;
+                }
+                fetchState();
+            } catch (err) {
+                console.error("Action Failed", err);
+            }
+        }
+
+        // The core recursive HTML generator tailored to your new CSS tokens
+        function renderTree(node, container, isRoot = true) {
+            if (isRoot) container.innerHTML = ''; 
+
+            const itemWrapper = document.createElement('div');
+            
+            const taskDiv = document.createElement('div');
+            taskDiv.className = `task status-${node.status}`;
+            
+            if (node.node_type !== "leaf" && node.node_type !== "approval" && node.node_type !== "inventory_gate") {
+                taskDiv.classList.add("phase-header");
+                taskDiv.innerHTML = `<span>▶ ${node.name}</span>`;
+            } else {
+                let ownerHtml = node.last_actor && (node.status === 'GREEN' || node.status === 'VERIFIED') 
+                                ? `<div class="task-owner">AUTH: ${node.last_actor}</div>` 
+                                : ``;
+                
+                if (node.status === 'BLOCKED' && node.prerequisite) {
+                    ownerHtml = `<div class="task-owner" style="color:var(--status-critical);">LOCKED BY: ${node.prerequisite}</div>`;
+                }
+
+                taskDiv.innerHTML = `
+                    <div class="task-left">
+                        <div class="task-indicator"></div>
+                        <span>${node.name}</span>
+                    </div>
+                    ${ownerHtml}
+                `;
+
+                if (node.status !== "BLOCKED" && node.status !== "GREEN") {
+                    taskDiv.onclick = (e) => { e.stopPropagation(); submitTick(node.node_id); };
+                }
+            }
+            itemWrapper.appendChild(taskDiv);
+
+            if (node.children && node.children.length > 0) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'task-list';
+                node.children.forEach(child => renderTree(child, childrenContainer, false));
+                itemWrapper.appendChild(childrenContainer);
+            }
+
+            container.appendChild(itemWrapper);
+        }
+
+        // 3. GHOST CREW TOGGLE
+        async function toggleGhostCrew() {
+            try {
+                const response = await fetch('/toggle_ghost', { method: 'POST' });
+                const data = await response.json();
+                const btn = document.getElementById('ghost-btn');
+                
+                if (data.active) {
+                    btn.innerText = "👻 GHOST CREW: ON";
+                    btn.style.color = "var(--status-warning)";
+                    btn.style.borderColor = "var(--status-warning)";
+                } else {
+                    btn.innerText = "👻 GHOST CREW: OFF";
+                    btn.style.color = "var(--text-heading)";
+                    btn.style.borderColor = "var(--border-card)";
+                }
+            } catch (err) {}
+        }
+    </script>
+</body>
+</html>
