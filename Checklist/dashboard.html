@@ -60,7 +60,7 @@
         .task.status-STAGED .task-indicator { background-color: #a855f7; }
         
         /* Layout fix for aesthetic widgets */
-        .readiness-container, .timeline, .track { opacity: 0.7; pointer-events: none; } /* Grayed out decorative elements */
+         /*.readiness-container, .timeline, .track { opacity: 0.7; pointer-events: none; }*/ /* Grayed out decorative elements */
     </style>
 </head>
 <body>
@@ -83,13 +83,16 @@
         <div class="dashboard-grid">
             
             <div class="column">
-                <div class="card">
-                    <div class="card-header">Mission Trajectory (Simulated)</div>
-                    <div class="timeline">
-                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-nominal); border-radius:50%;"></div><span>P1</span></div>
-                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-nominal); border-radius:50%;"></div><span>P2</span></div>
-                        <div class="milestone"><div style="width:12px; height:12px; background:var(--status-warning); border-radius:50%;"></div><span style="color:var(--status-warning);">P3</span></div>
-                        <div class="milestone"><div style="width:12px; height:12px; border:2px solid var(--border-card); border-radius:50%;"></div><span>P6</span></div>
+               <div class="card">
+                    <div class="card-header">Mission Trajectory (Live)</div>
+                    <div id="live-timeline" style="display: flex; justify-content: space-between; align-items: center; position: relative; padding: 10px 0;">
+                        </div>
+                </div>
+				
+			    <div class="card">
+                    <div class="card-header">Live Crew Workload</div>
+                    <div id="crew-workload-container" style="display: flex; flex-direction: column; gap: 16px;">
+                        <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 12px;">Awaiting ledger data...</span>
                     </div>
                 </div>
 
@@ -102,6 +105,33 @@
             </div>
 
             <div class="column">
+                <div class="card readiness-container" style="opacity: 1; pointer-events: auto;">
+                    <div class="card-header">Unified Readiness</div>
+                    <div style="display: flex; align-items: center; justify-content: space-around;">
+                        <div class="readiness-score" style="text-align: center;">
+                            <h1 style="font-size: 3.5rem; color: var(--text-main); line-height: 1; margin-bottom: 5px;">0%</h1>
+                            <p style="font-family: var(--font-mono); color: var(--text-muted); font-weight: bold; font-size: 13px; letter-spacing: 1px;">OFFLINE</p>
+                        </div>
+                        <svg width="180" height="180" viewBox="0 0 200 200">
+                            <polygon points="100,20 169.2,60 169.2,140 100,180 30.8,140 30.8,60" fill="none" stroke="var(--border-card)" stroke-width="1"/>
+                            <polygon points="100,60 134.6,80 134.6,120 100,140 65.4,120 65.4,80" fill="none" stroke="var(--border-card)" stroke-width="1"/>
+                            <line x1="100" y1="100" x2="100" y2="20" stroke="var(--border-card)" />
+                            <line x1="100" y1="100" x2="169.2" y2="60" stroke="var(--border-card)" />
+                            <line x1="100" y1="100" x2="169.2" y2="140" stroke="var(--border-card)" />
+                            <line x1="100" y1="100" x2="100" y2="180" stroke="var(--border-card)" />
+                            <line x1="100" y1="100" x2="30.8" y2="140" stroke="var(--border-card)" />
+                            <line x1="100" y1="100" x2="30.8" y2="60" stroke="var(--border-card)" />
+                            <polygon class="radar-polygon" points="100,100 100,100 100,100 100,100 100,100 100,100" fill="var(--status-nominal-bg)" stroke="var(--status-nominal)" stroke-width="2" opacity="0.8"/>
+                            <text x="100" y="15" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">AIR</text>
+                            <text x="175" y="55" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">LOG</text>
+                            <text x="175" y="150" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">SEC</text>
+                            <text x="100" y="195" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">MIS</text>
+                            <text x="25" y="150" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">COM</text>
+                            <text x="25" y="55" fill="var(--text-muted)" font-size="10" text-anchor="middle" font-family="monospace">INT</text>
+                        </svg>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">Network / Exception Feed</div>
                     <div id="alert-feed">
@@ -238,7 +268,152 @@
             // Add a cool transition to make it animate smoothly
             document.querySelector('.radar-polygon').style.transition = "all 0.5s ease-out";
         }
+        // --- NEW: Dynamic Mission Trajectory Engine ---
+        function updateTrajectory(dag) {
+            // 1. Traverse the DAG to find the exact status of the main phases
+            let phaseStatus = {};
+            function findPhases(node) {
+                if (node.node_id && node.node_id.startsWith("phase_")) {
+                    phaseStatus[node.node_id] = node.status;
+                }
+                if (node.children) node.children.forEach(findPhases);
+            }
+            findPhases(dag);
 
+            // 2. Define the exact sequence we want to draw
+            const sequence = [
+                { id: "phase_1_depot", label: "P1:DEPOT" },
+                { id: "phase_2_transit", label: "P2:TRNST" },
+                { id: "phase_3_gcs", label: "P3:GCS" },
+				{ id: "phase_4_brief", label: "P4:BRIEF" },
+                { id: "phase_5_airframe", label: "P5:AIR" },
+                { id: "phase_6_launch", label: "P6:LNCH" },
+                { id: "phase_7_recovery", label: "P7:RCVR" },
+                { id: "phase_8_rtb", label: "P8:RTB" }
+            ];
+
+            const container = document.getElementById("live-timeline");
+            container.innerHTML = ""; // Clear the old frame
+
+            // 3. Draw the background connecting track line
+            const trackLine = document.createElement("div");
+            trackLine.style.position = "absolute";
+            trackLine.style.top = "17px"; // Center behind the dots
+            trackLine.style.left = "3%";
+            trackLine.style.right = "3%";
+            trackLine.style.height = "2px";
+            trackLine.style.background = "var(--border-card)";
+            trackLine.style.zIndex = "0";
+            container.appendChild(trackLine);
+
+            // 4. Draw each milestone dot based on its real backend status
+            sequence.forEach((step) => {
+                const status = phaseStatus[step.id] || "UNINITIALIZED";
+                
+                // Default styles (Empty / Uninitialized)
+                let bgColor = "var(--bg-card)";
+                let borderColor = "var(--border-card)";
+                let textColor = "var(--text-muted)";
+
+                // Dynamic Status Logic
+                if (status === "GREEN" || status === "VERIFIED" || status === "GREEN_OVR") {
+                    bgColor = "var(--status-success)";
+                    borderColor = "var(--status-success)";
+                    textColor = "var(--text-main)";
+                } else if (status === "ACTIVE" || status === "STAGED") {
+                    bgColor = "var(--status-nominal)";
+                    borderColor = "var(--status-nominal)";
+                    textColor = "var(--status-nominal)";
+                } else if (status === "BLOCKED" || status === "RED") {
+                    bgColor = "var(--status-critical)";
+                    borderColor = "var(--status-critical)";
+                    textColor = "var(--status-critical)";
+                }
+
+                // Build the HTML for the dot
+                const dotWrapper = document.createElement("div");
+                dotWrapper.style.display = "flex";
+                dotWrapper.style.flexDirection = "column";
+                dotWrapper.style.alignItems = "center";
+                dotWrapper.style.gap = "8px";
+                dotWrapper.style.zIndex = "1";
+
+                const dot = document.createElement("div");
+                dot.style.width = "14px";
+                dot.style.height = "14px";
+                dot.style.borderRadius = "50%";
+                dot.style.background = bgColor;
+                dot.style.border = `2px solid ${borderColor}`;
+                dot.style.transition = "all 0.3s ease";
+
+                const label = document.createElement("span");
+                label.innerText = step.label;
+                label.style.fontSize = "12px";
+                label.style.fontFamily = "var(--font-mono)";
+                label.style.color = textColor;
+                label.style.fontWeight = status !== "UNINITIALIZED" ? "bold" : "normal";
+                label.style.transition = "all 0.3s ease";
+
+                dotWrapper.appendChild(dot);
+                dotWrapper.appendChild(label);
+                container.appendChild(dotWrapper);
+            });
+        }
+		// --- NEW: Dynamic Crew Workload Engine ---
+        function updateCrewWorkload(dag) {
+            // 1. Set up our expected actors and their estimated max task loads for the math
+            let stats = {
+                "GHOST_CREW": { label: "👻 AI Ghost Crew", done: 0, max: 24 },
+                "OP-JAVAAN-01": { label: "🦅 Commander Javaan", done: 0, max: 8 },
+                "TECH-ALPHA": { label: "🔧 Operator Alpha", done: 0, max: 15 }
+            };
+
+            // 2. Recursively crawl the DAG and count who did what
+            function walk(node) {
+                if (node.node_type === "leaf" || node.node_type === "approval") {
+                    if ((node.status === "GREEN" || node.status === "VERIFIED" || node.status === "GREEN_OVR") && node.last_actor) {
+                        // If an unknown badge pops up, dynamically track them too!
+                        if (!stats[node.last_actor]) {
+                            stats[node.last_actor] = { label: `[?] ${node.last_actor}`, done: 0, max: 10 };
+                        }
+                        stats[node.last_actor].done++;
+                    }
+                }
+                if (node.children) node.children.forEach(walk);
+            }
+            walk(dag);
+
+            // 3. Render the HTML
+            const container = document.getElementById("crew-workload-container");
+            if (!container) return;
+            container.innerHTML = ""; // Clear the loading text
+
+            // 4. Draw the bars
+            Object.keys(stats).forEach(actor => {
+                // Only draw the actor if they have actually done work (or if they are the main AI/Commander)
+                if (stats[actor].done > 0 || actor === "GHOST_CREW" || actor === "OP-JAVAAN-01") {
+                    
+                    // Calculate percentage, capping at 100%
+                    let pct = Math.min(100, Math.round((stats[actor].done / stats[actor].max) * 100));
+                    
+                    // Dynamic styling (Purple for AI, Blue for Humans, Green for 100% complete)
+                    let barColor = actor === "GHOST_CREW" ? "#a855f7" : "var(--status-nominal)";
+                    if (pct === 100) barColor = "var(--status-success)";
+
+                    container.innerHTML += `
+                        <div class="track">
+                            <div class="track-label" style="display:flex; justify-content:space-between; font-size: 12px; margin-bottom: 6px; color: var(--text-heading); font-weight: bold;">
+                                <span>${stats[actor].label}</span>
+                                <span style="font-family: var(--font-mono); color: var(--text-muted); font-weight: normal;">${stats[actor].done} / ${stats[actor].max} TASKS</span>
+                            </div>
+                            <div class="track-bar-container" style="background: rgba(0,0,0,0.3); border-radius: 4px; height: 6px; overflow: hidden; border: 1px solid var(--border-card);">
+                                <div class="track-bar" style="width: ${pct}%; background-color: ${barColor}; height: 100%; transition: width 0.4s ease, background-color 0.4s ease;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+        }
         // 2. DAG RENDERING ENGINE
         async function fetchState() {
             if (!actorId) return; 
@@ -249,25 +424,36 @@
                 document.getElementById('session-id').innerText = data.session || "---";
                 
                 updateReadinessMetrics(data.dag);
+				updateTrajectory(data.dag);
+				updateCrewWorkload(data.dag);
                 renderTree(data.dag, document.getElementById('dag-container'));
             } catch (err) {
                 console.error("Network Error", err);
             }
         }
 
-        async function submitTick(nodeId) {
+        // --- UPDATED: Accepts the nodeType to determine the action ---
+        async function submitTick(nodeId, nodeType = "leaf") {
             if (!actorId) return;
+            
+            // If it's an approval gate, send the APPROVE action instead of TICK
+            const actionType = (nodeType === "approval") ? "APPROVE" : "TICK";
+            
             try {
                 const response = await fetch('/action', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: "TICK", target: nodeId, actor: actorId, actor_role: actorRole })
+                    body: JSON.stringify({ 
+                        action: actionType, // Inject the dynamic action here
+                        target: nodeId, 
+                        actor: actorId, 
+                        actor_role: actorRole 
+                    })
                 });
 
                 if (!response.ok) {
                     const errData = await response.json();
                     const alertFeed = document.getElementById('alert-feed');
-                    // Flash red alert on screen
                     alertFeed.innerHTML = `
                         <div style="border-left: 3px solid var(--status-critical); padding: 12px; background: var(--status-critical-bg); color: var(--text-main); font-size: 13px; border-radius: 0 4px 4px 0; margin-bottom: 8px;">
                             <strong>RBAC BLOCKED:</strong> ${errData.detail}
@@ -310,7 +496,7 @@
                 `;
 
                 if (node.status !== "BLOCKED" && node.status !== "GREEN") {
-                    taskDiv.onclick = (e) => { e.stopPropagation(); submitTick(node.node_id); };
+                    taskDiv.onclick = (e) => { e.stopPropagation(); submitTick(node.node_id, node.node_type); };
                 }
             }
             itemWrapper.appendChild(taskDiv);

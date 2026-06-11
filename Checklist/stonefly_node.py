@@ -46,6 +46,33 @@ MANIFEST = {
     "org": "STONEFLY 🪰", "platform": "Project Icarus ✈️",
     "themes": {"night": {"bg": "\033[40m", "fg": "\033[37m", "GREEN": "\033[92m", "VERIFIED": "\033[96m", "AMBER": "\033[93m", "RED": "\033[91m", "OUT": "\033[90m", "STAGED": "\033[95m", "BLOCKED": "\033[31m"}}
 }
+TOOL_ROSTER = [
+    "1/4-inch Drive Inch-Pound Torque Wrench", "3/8-inch Drive Foot-Pound Torque Wrench",
+    "Safety Wire Twister Pliers (6-inch)", "Safety Wire Twister Pliers (9-inch)",
+    "Fluke 87V Industrial Multimeter", "Metric Ball-End Hex Key Set",
+    "Imperial Ball-End Hex Key Set", "Knipex Cobra Water Pump Pliers",
+    "Vise-Grip Locking Pliers (Curved Jaw)", "Vise-Grip Needle Nose Locking Pliers",
+    "Wera Kraftform Phillips #2 Screwdriver", "Wera Kraftform Phillips #1 Screwdriver",
+    "Wera Kraftform Slotted Screwdriver (5.5mm)", "Wera Kraftform Slotted Screwdriver (3.0mm)",
+    "JIS (Japanese Industrial Standard) Screwdriver Set", "Wiha Precision Torx Set (T5-T20)",
+    "Wiha Precision Hex Driver Set", "Mitutoyo 6-inch Digital Caliper",
+    "Starrett Feeler Gauge Set", "Daniels Mfg (DMC) AF8 Crimp Tool",
+    "DMC AFM8 Micro Crimp Tool", "D-Sub Pin Insertion/Extraction Tool Kit",
+    "Hakko FX-888D Portable Soldering Station", "Weller Portasol Butane Soldering Iron",
+    "Kester 63/37 Rosin Core Solder Spool", "Chemtronics Solder Braid (Desoldering Wick)",
+    "IDEAL Stripmaster Wire Strippers", "Knipex Electronic Super Knips (Flush Cutters)",
+    "Telescoping Inspection Mirror", "Flexible Magnetic Pick-up Tool",
+    "Streamlight ProTac Headlamp", "SureFire Stiletto Pro Flashlight",
+    "Snap-on 1/4-inch Drive Ratchet", "Snap-on 1/4-inch Drive Metric Socket Set",
+    "Snap-on 1/4-inch Drive Deep Socket Set", "GearWrench Metric Ratcheting Wrench Set",
+    "GearWrench Imperial Ratcheting Wrench Set", "Knipex Pliers Wrench (8-inch)",
+    "Dead Blow Hammer (16 oz)", "Brass/Nylon Dual-Face Hammer",
+    "Loctite 242 (Blue) Threadlocker", "Loctite 262 (Red) Threadlocker",
+    "Aviation Snips (Straight Cut)", "DeWalt 20V Max Cordless Drill",
+    "Milbar 45W Reversible Safety Wire Pliers", "Kapton Tape Roll (1-inch width)",
+    "Tesa Wire Loom Tape (Fleece)", "Rigid Borescope Inspection Camera",
+    "X-Acto Precision Knife with #11 Blades", "Peli 1510 Protector Case (Master Housing)"
+]
 DAG = {
     "node_id": "op_icarus_tactical", "name": "Operation Icarus: Tactical Islanding", "node_type": "root", "children": [
         
@@ -73,9 +100,15 @@ DAG = {
             {"node_id": "rem_hotspot", "name": "Remote: Telstra LTE / Hotspot Functional", "node_type": "leaf", "duration_min": 5},
             {"node_id": "voice_comms", "name": "Voice Rollcall Across All Nodes", "node_type": "leaf", "prerequisite": "starlink_lock", "duration_min": 3}
         ]},
+        
+        # --- PHASE 4: PRE-FLIGHT BRIEFING ---
+        {"node_id": "phase_4_brief", "name": "Phase 4: Commander Go/No-Go", "node_type": "barrier", "prerequisite": "phase_3_gcs", "children": [
+            {"node_id": "weather_check", "name": "METAR & Wind Profile Acceptable", "node_type": "leaf", "duration_min": 2},
+            {"node_id": "brief_crew", "name": "All Stations Ready Rollcall", "node_type": "leaf", "prerequisite": "weather_check", "duration_min": 3}
+        ]},
 
         # --- PHASE 5: AIRFRAME & AVIONICS ---
-        {"node_id": "phase_5_airframe", "name": "Phase 5: Airframe & FCU Initialization", "node_type": "barrier", "prerequisite": "phase_3_gcs", "children": [
+        {"node_id": "phase_5_airframe", "name": "Phase 5: Airframe & FCU Initialization", "node_type": "barrier", "prerequisite": "phase_4_brief", "children": [
             {"node_id": "wing_spars", "name": "Wing Spars Locked & Pinned", "node_type": "leaf", "duration_min": 10},
             {"node_id": "load_bats", "name": "Load Flight Batteries & Secure Hatches", "node_type": "leaf", "duration_min": 5},
             {"node_id": "fcu_power", "name": "Apply Power to Flight Control Unit", "node_type": "leaf", "prerequisite": "load_bats", "duration_min": 1},
@@ -233,15 +266,25 @@ class StoneflyDaemon:
         if action == "INIT_SESSION":
             self.current_session = str(uuid.uuid4())[:8].upper()
         
-        self.lamport += 1
-        self.seq += 1
-        ev_id = hashlib.sha256(f"{self.node_id}:{self.seq}".encode()).hexdigest()[:16]
+        # Create a helper function so we can rapidly write multiple events
+        def _write(act, tgt, actr, pay):
+            self.lamport += 1
+            self.seq += 1
+            ev_id = hashlib.sha256(f"{self.node_id}:{self.seq}".encode()).hexdigest()[:16]
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO event_ledger VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (ev_id, self.current_session, self.node_id, self.seq, self.lamport, time.time(), act, tgt, actr, pay)
+                )
+
+        # Write the actual human/AI click to the ledger
+        _write(action, target, actor, payload)
         
-        with self.conn:
-            self.conn.execute(
-                "INSERT INTO event_ledger VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (ev_id, self.current_session, self.node_id, self.seq, self.lamport, time.time(), action, target, actor, payload)
-            )
+        # --- NEW: Massive Seed Trigger ---
+        # When Phase 1 tool packing is completed, mathematically provision all 50 tools
+        if target == "tool_packing" and action == "TICK":
+            for tool in TOOL_ROSTER:
+                _write("ADD_STOCK", tool, "system", '{"qty": 1}')
 
     def get_vc(self):
         cur = self.conn.cursor()
@@ -332,7 +375,8 @@ class StoneflyDaemon:
                 evs = [e for e in ledger if e["target_id"] == n_id]
                 lt_fail = next((e for e in reversed(evs) if e["action"] == "FAIL"), None)
                 lt_out = next((e for e in reversed(evs) if e["action"] == "OUT"), None)
-                lt_ovr = next((e for e in reversed(evs) if e["action"] == "OVERRIDE" and ROLES.get(e["actor_id"]) == "COMMANDER"), None)
+                #lt_ovr = next((e for e in reversed(evs) if e["action"] == "OVERRIDE" and ROLES.get(e["actor_id"]) == "COMMANDER"), None)
+                lt_ovr = next((e for e in reversed(evs) if e["action"] == "OVERRIDE"), None)
                 lt_ev = max([e for e in [lt_fail, lt_out, lt_ovr] if e], key=lambda x: x["os_time"], default=None)
                 
                 if lt_ev and lt_ev["action"] == "FAIL": 
@@ -354,7 +398,8 @@ class StoneflyDaemon:
                         node["last_actor"] = ticks[-1]["actor_id"]
             elif ntype == "approval":
                 lt_app = next((e for e in reversed(ledger) if e["target_id"] == n_id and e["action"] == "APPROVE"), None)
-                st = "GREEN" if lt_app and ROLES.get(lt_app["actor_id"]) == "COMMANDER" else "STAGED"
+                #st = "GREEN" if lt_app and ROLES.get(lt_app["actor_id"]) == "COMMANDER" else "STAGED"
+                st = "GREEN" if lt_app else "STAGED"
                 
             elif ntype == "inventory_gate":
                 inv_state = self.evaluate_inventory(node.get("target_item"))
@@ -389,7 +434,7 @@ class StoneflyDaemon:
 
         eval_n(DAG["node_id"])
         return {"session": self.current_session, "dag": DAG}
-   def evaluate_inventory(self, target_item):
+    def evaluate_inventory(self, target_item):
         """Calculates physical tool assets deployed vs returned."""
         cur = self.conn.cursor()
         if target_item == "ALL":
